@@ -1,19 +1,15 @@
-from typing import Literal
-
 from fastapi import FastAPI
-from pydantic import BaseModel
 
-
-class HealthResponse(BaseModel):
-    status: Literal["healthy"] = "healthy"
+from backend.app.core.config import settings
+from backend.app.api.routes.health import router as health_router
 
 
 app = FastAPI(
-    title="CodePilot AI",
+    title=settings.APP_NAME,
     description="Backend API for the CodePilot AI developer assistant.",
+    debug=settings.DEBUG,
 )
 
 
-@app.get("/health", response_model=HealthResponse)
-def health_check() -> HealthResponse:
-    return {"status": "healthy"}
+# Register routers
+app.include_router(health_router)
