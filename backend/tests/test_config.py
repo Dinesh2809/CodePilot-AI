@@ -9,6 +9,8 @@ def test_defaults() -> None:
     assert s.APP_ENV == "development"
     assert isinstance(s.DEBUG, bool)
     assert s.API_V1_PREFIX == "/api/v1"
+    assert s.MAX_FILES_PER_BATCH == 50
+    assert s.EMBEDDING_MODEL == "all-MiniLM-L6-v2"
 
 
 def test_env_loading(monkeypatch) -> None:
