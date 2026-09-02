@@ -1,3 +1,16 @@
-version: "3.9"
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    container_name: codepilot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: codepilot
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: codepilot_dev_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - codepilot_pgdata:/var/lib/postgresql
 
-services: {}
+volumes:
+  codepilot_pgdata:

@@ -1,4 +1,9 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+ROOT_DIR = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
@@ -11,8 +16,12 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = 5
     MAX_FILES_PER_BATCH: int = 50
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    DATABASE_URL: str = ""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=ROOT_DIR / ".env",
+        env_file_encoding="utf-8",
+    )
 
 
 # Single shared settings instance
