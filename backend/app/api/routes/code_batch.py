@@ -1,10 +1,10 @@
 from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import JSONResponse
 
-from backend.app.core.config import settings
-from backend.app.schemas.code import CodeUploadError, RepositoryIngestionResponse
-from backend.app.services.code_upload import CodeUploadService
-from backend.app.services.repository_ingestion import (
+from ...core.config import settings
+from ...schemas.code import CodeUploadError, RepositoryIngestionResponse
+from ...services.code_upload import CodeUploadService
+from ...services.repository_ingestion import (
     RepositoryIngestionException,
     RepositoryIngestionService,
 )

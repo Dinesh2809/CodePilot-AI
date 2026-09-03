@@ -1,7 +1,7 @@
 import ast
 
-from backend.app.schemas.code import CodeChunk, CodeChunkResult
-from backend.app.services.code_parser import PythonCodeParser
+from ...schemas.code import CodeChunk, CodeChunkResult
+from ..code_parser import PythonCodeParser
 
 
 class PythonCodeChunker:

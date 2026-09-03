@@ -1,10 +1,10 @@
 from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import JSONResponse
 
-from backend.app.core.config import settings
-from backend.app.schemas.code import CodeParseResult, CodeUploadError
-from backend.app.services.code_parser import PythonCodeParser
-from backend.app.services.code_upload import (
+from ...core.config import settings
+from ...schemas.code import CodeParseResult, CodeUploadError
+from ...services.code_parser import PythonCodeParser
+from ...services.code_upload import (
     CodeUploadException,
     CodeUploadService,
 )

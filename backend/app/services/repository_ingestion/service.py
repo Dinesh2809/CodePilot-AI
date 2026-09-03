@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from fastapi import UploadFile
 
-from backend.app.schemas.code import (
+from ...schemas.code import (
     CodeChunk,
     RepositoryChunk,
     RepositoryFile,
@@ -11,8 +11,8 @@ from backend.app.schemas.code import (
     RepositoryStatistics,
     RepositorySummary,
 )
-from backend.app.services.code_chunker import PythonCodeChunker
-from backend.app.services.code_upload import CodeUploadException, CodeUploadService
+from ..code_chunker import PythonCodeChunker
+from ..code_upload import CodeUploadException, CodeUploadService
 
 
 @dataclass

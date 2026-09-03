@@ -1,12 +1,12 @@
 from fastapi import FastAPI
 
-from backend.app.core.config import settings
-from backend.app.api.routes.health import router as health_router
-from backend.app.api.routes.code import router as code_router
-from backend.app.api.routes.code_parse import router as code_parse_router
-from backend.app.api.routes.code_chunk import router as code_chunk_router
-from backend.app.api.routes.code_batch import router as code_batch_router
-from backend.app.api.routes.code_embed import router as code_embed_router
+from .core.config import settings
+from .api.routes.health import router as health_router
+from .api.routes.code import router as code_router
+from .api.routes.code_parse import router as code_parse_router
+from .api.routes.code_chunk import router as code_chunk_router
+from .api.routes.code_batch import router as code_batch_router
+from .api.routes.code_embed import router as code_embed_router
 
 
 app = FastAPI(

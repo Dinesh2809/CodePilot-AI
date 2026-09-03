@@ -1,9 +1,9 @@
 from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import JSONResponse
 
-from backend.app.core.config import settings
-from backend.app.schemas.code import CodeUploadError, CodeUploadResponse
-from backend.app.services.code_upload import CodeUploadException, CodeUploadService
+from ...core.config import settings
+from ...schemas.code import CodeUploadError, CodeUploadResponse
+from ...services.code_upload import CodeUploadException, CodeUploadService
 
 
 router = APIRouter(prefix=f"{settings.API_V1_PREFIX}/code", tags=["code"])

@@ -1,4 +1,4 @@
-from backend.app.services.repository_ingestion.service import (
+from .service import (
     RepositoryIngestionException,
     RepositoryIngestionService,
 )

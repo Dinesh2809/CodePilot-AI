@@ -1,6 +1,6 @@
 import ast
 
-from backend.app.schemas.code import (
+from ...schemas.code import (
     CodeClass,
     CodeFunction,
     CodeImport,

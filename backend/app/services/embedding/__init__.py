@@ -1,4 +1,4 @@
-from backend.app.services.embedding.service import (
+from .service import (
     EmbeddingService,
     EmbeddingServiceException,
     InMemoryEmbedding,

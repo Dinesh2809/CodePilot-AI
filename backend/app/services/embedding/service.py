@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import logging
 from typing import Any, Callable
 
-from backend.app.schemas.code import CodeChunk
+from ...schemas.code import CodeChunk
 
 
 logger = logging.getLogger(__name__)

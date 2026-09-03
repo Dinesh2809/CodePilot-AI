@@ -3,7 +3,7 @@ from pathlib import PurePath, PureWindowsPath
 
 from fastapi import UploadFile
 
-from backend.app.schemas.code import CodeFileMetadata
+from ..schemas.code import CodeFileMetadata
 
 
 SUPPORTED_EXTENSIONS = {

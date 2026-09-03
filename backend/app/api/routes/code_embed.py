@@ -1,16 +1,16 @@
 from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import JSONResponse
 
-from backend.app.core.config import settings
-from backend.app.schemas.code import (
+from ...core.config import settings
+from ...schemas.code import (
     CodeUploadError,
     EmbeddingMetadata,
     EmbeddingResponse,
     RepositoryFileError,
 )
-from backend.app.services.code_chunker import PythonCodeChunker
-from backend.app.services.code_upload import CodeUploadException, CodeUploadService
-from backend.app.services.embedding import EmbeddingService, EmbeddingServiceException
+from ...services.code_chunker import PythonCodeChunker
+from ...services.code_upload import CodeUploadException, CodeUploadService
+from ...services.embedding import EmbeddingService, EmbeddingServiceException
 
 
 router = APIRouter(prefix=f"{settings.API_V1_PREFIX}/code", tags=["code"])

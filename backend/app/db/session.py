@@ -1,13 +1,14 @@
 from collections.abc import AsyncGenerator
 
 from fastapi import HTTPException
+from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from backend.app.core.config import settings
+from ..core.config import settings
 
 
 engine = (
-    create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
+    create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
     if settings.DATABASE_URL
     else None
 )
