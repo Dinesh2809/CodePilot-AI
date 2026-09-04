@@ -1,6 +1,16 @@
+import asyncio
+import io
+from uuid import uuid4
+
+import pytest
+from fastapi import UploadFile
 from fastapi.testclient import TestClient
 
 from app.main import app
+from backend.app.api.routes import code_batch
+from backend.app.services.code_upload import CodeUploadService
+from backend.app.services.embedding import InMemoryEmbedding
+from backend.app.services.repository_ingestion import RepositoryIngestionService
 
 
 client = TestClient(app)
@@ -190,3 +200,64 @@ def test_existing_endpoints_still_work() -> None:
         "/api/v1/code/chunk",
         files={"file": ("file.py", b"x = 1\n", "text/plain")},
     ).status_code == 200
+
+
+class FakeEmbeddingService:
+    def embed_chunks(self, chunks):
+        return [InMemoryEmbedding(chunk.chunk_id, 384, [0.0] * 384) for chunk in chunks]
+
+
+class FakeSession:
+    def __init__(self) -> None:
+        self.records = []
+        self.committed = False
+
+    def add(self, record) -> None:
+        self.records.append(record)
+
+    async def flush(self) -> None:
+        if getattr(self.records[-1], "id", None) is None:
+            self.records[-1].id = uuid4()
+
+    async def commit(self) -> None:
+        self.committed = True
+
+    async def rollback(self) -> None:
+        self.records.clear()
+
+
+@pytest.fixture(autouse=True)
+def isolate_batch_endpoint_dependencies(monkeypatch):
+    monkeypatch.setattr(
+        code_batch.repository_ingestion_service,
+        "embedding_service",
+        FakeEmbeddingService(),
+    )
+    session = FakeSession()
+    app.dependency_overrides[code_batch.get_db_session] = lambda: session
+    yield
+    app.dependency_overrides.clear()
+
+
+def test_batch_persists_project_file_chunks_and_embeddings() -> None:
+    service = RepositoryIngestionService(
+        upload_service=CodeUploadService(5),
+        embedding_service=FakeEmbeddingService(),
+    )
+    upload = UploadFile(
+        filename="src/auth.py",
+        file=io.BytesIO(b"def login(user):\n    return user\n"),
+    )
+    session = FakeSession()
+
+    response = asyncio.run(service.process([upload], session))
+
+    assert response.success is True
+    assert session.committed is True
+    assert len(session.records) == 3
+    project, code_file, code_chunk = session.records
+    assert project.name.startswith("repository-")
+    assert code_file.project_id == project.id
+    assert code_chunk.file_id == code_file.id
+    assert code_chunk.embedding is not None
+    assert len(code_chunk.embedding) == 384

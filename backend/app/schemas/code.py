@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 
@@ -159,4 +161,32 @@ class EmbeddingResponse(BaseModel):
     filename: str | None = None
     chunks: list[EmbeddingMetadata] = Field(default_factory=list)
     errors: list[RepositoryFileError] = Field(default_factory=list)
+    error: CodeUploadError | None = None
+
+
+class CodeSearchRequest(BaseModel):
+    query: str = Field(min_length=1)
+    top_k: int = Field(default=5, ge=1, le=50)
+    project_id: UUID | None = None
+
+
+class CodeSearchResult(BaseModel):
+    project_id: UUID
+    file_id: UUID
+    filename: str
+    chunk_id: str
+    chunk_type: str
+    name: str
+    start_line: int
+    end_line: int
+    language: str
+    content: str
+    similarity: float
+
+
+class CodeSearchResponse(BaseModel):
+    success: bool
+    query: str
+    results: list[CodeSearchResult] = Field(default_factory=list)
+    result_count: int = 0
     error: CodeUploadError | None = None

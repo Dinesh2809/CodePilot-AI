@@ -2,15 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from logging.config import fileConfig
-from pathlib import Path
-import sys
 
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from backend.app.core.config import settings
 from backend.app.db.base import Base

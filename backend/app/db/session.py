@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from ..core.config import settings
+from backend.app.core.config import settings
 
 
 engine = (
