@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     MAX_FILES_PER_BATCH: int = 50
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     DATABASE_URL: str = ""
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-3.6-flash"
 
     model_config = SettingsConfigDict(
         env_file=ROOT_DIR / ".env",

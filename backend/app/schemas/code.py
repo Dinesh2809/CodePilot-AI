@@ -190,3 +190,17 @@ class CodeSearchResponse(BaseModel):
     results: list[CodeSearchResult] = Field(default_factory=list)
     result_count: int = 0
     error: CodeUploadError | None = None
+
+
+class CodeAskRequest(BaseModel):
+    query: str = Field(min_length=1)
+    top_k: int = Field(default=5, ge=1, le=50)
+    project_id: UUID | None = None
+
+
+class CodeAskResponse(BaseModel):
+    success: bool
+    query: str
+    answer: str | None = None
+    retrieved_results: list[CodeSearchResult] = Field(default_factory=list)
+    error: CodeUploadError | None = None
