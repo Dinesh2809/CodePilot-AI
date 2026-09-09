@@ -2,6 +2,7 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from backend.app.agents import AgentAnalysis, AgentRunResult, ReviewFinding
+from backend.app.agents.base import AgentException
 from backend.app.services.gemini import GeminiService
 from backend.app.services.review_orchestrator import ReviewOrchestrator
 
@@ -207,5 +208,25 @@ def test_orchestrator_empty_context():
             assert review.summary is not None
             assert review.findings == []
             assert review.total_findings == 0
+
+    asyncio.run(run_test())
+
+
+def test_failed_agent_result_has_explicit_empty_findings():
+    """An agent exception produces a failed result with no findings."""
+    class FailingAgent:
+        category = "security"
+
+        async def analyze(self, review_request, context):
+            raise AgentException("AGENT_FAILED", "The agent failed.")
+
+    async def run_test():
+        result = await ReviewOrchestrator._run_agent(
+            FailingAgent(), "Review", []
+        )
+
+        assert result.success is False
+        assert result.findings == []
+        assert result.agent == "security"
 
     asyncio.run(run_test())

@@ -33,6 +33,7 @@ class ReviewAggregator:
             for result in normalized.values()
             if result.success
             for finding in result.findings
+            if self._is_valid_agent_finding(result.agent, finding)
         )
         findings.sort(key=self._finding_sort_key)
 
@@ -85,6 +86,11 @@ class ReviewAggregator:
         return normalized
 
     @staticmethod
+    def _is_valid_agent_finding(agent: ReviewAgent, finding: ReviewFinding) -> bool:
+        """Validate that a finding's category matches the agent type."""
+        return finding.category == agent
+
+    @staticmethod
     def _deduplicate(findings: Iterable[ReviewFinding]) -> list[ReviewFinding]:
         unique: dict[tuple[object, ...], ReviewFinding] = {}
         for finding in findings:
@@ -93,7 +99,6 @@ class ReviewAggregator:
                 finding.filename,
                 finding.start_line,
                 finding.end_line,
-                finding.title,
             )
             existing = unique.get(key)
             if existing is None or (

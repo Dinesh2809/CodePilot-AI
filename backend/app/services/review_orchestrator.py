@@ -74,17 +74,20 @@ class ReviewOrchestrator:
             return AgentRunResult(
                 agent=agent.category,
                 success=False,
+                findings=[],
                 error=error.message,
             )
         except GeminiServiceException as error:
             return AgentRunResult(
                 agent=agent.category,
                 success=False,
+                findings=[],
                 error=error.message,
             )
         except Exception as error:
             return AgentRunResult(
                 agent=agent.category,
                 success=False,
+                findings=[],
                 error="An unexpected error occurred during review.",
             )
