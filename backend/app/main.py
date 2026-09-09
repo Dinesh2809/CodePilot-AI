@@ -9,6 +9,7 @@ from .api.routes.code_batch import router as code_batch_router
 from .api.routes.code_embed import router as code_embed_router
 from .api.routes.code_search import router as code_search_router
 from .api.routes.code_ask import router as code_ask_router
+from .api.routes.code_review import router as code_review_router
 
 
 app = FastAPI(
@@ -27,3 +28,4 @@ app.include_router(code_batch_router)
 app.include_router(code_embed_router)
 app.include_router(code_search_router)
 app.include_router(code_ask_router)
+app.include_router(code_review_router)

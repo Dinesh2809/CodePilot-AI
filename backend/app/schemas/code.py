@@ -204,3 +204,26 @@ class CodeAskResponse(BaseModel):
     answer: str | None = None
     retrieved_results: list[CodeSearchResult] = Field(default_factory=list)
     error: CodeUploadError | None = None
+
+
+class CodeReviewRequest(BaseModel):
+    query: str = Field(min_length=1)
+    top_k: int = Field(default=10, ge=1, le=50)
+    project_id: UUID | None = None
+
+
+class CodeReviewResponse(BaseModel):
+    success: bool
+    query: str
+    summary: str | None = None
+    findings: list = Field(default_factory=list)
+    total_findings: int = 0
+    critical_count: int = 0
+    high_count: int = 0
+    medium_count: int = 0
+    low_count: int = 0
+    info_count: int = 0
+    categories: list[str] = Field(default_factory=list)
+    agents_completed: list[str] = Field(default_factory=list)
+    agents_failed: list[str] = Field(default_factory=list)
+    error: CodeUploadError | None = None
