@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...db.models import CodeChunkRecord, CodeFile, Project
 from ...schemas.code import (
     CodeChunk,
+    ProjectIngestionResult,
     RepositoryChunk,
     RepositoryFile,
     RepositoryFileError,
@@ -43,8 +44,53 @@ class RepositoryIngestionService:
         self.max_files_per_batch = max_files_per_batch
 
     async def process(
-        self, uploads: list[UploadFile] | None, session: AsyncSession | None = None
+        self,
+        uploads: list[UploadFile] | None,
+        session: AsyncSession | None = None,
+        project_name: str | None = None,
     ) -> RepositoryIngestionResponse:
+        response, source_chunks = await self._collect(uploads)
+        if session is not None and response.success:
+            await self._persist(
+                session,
+                response,
+                source_chunks,
+                project_name=project_name,
+            )
+        return response
+
+    async def ingest(
+        self,
+        project_name: str,
+        uploads: list[UploadFile] | None,
+        session: AsyncSession,
+    ) -> ProjectIngestionResult:
+        """Ingest a repository and persist its project, files, chunks, and embeddings."""
+        if not isinstance(project_name, str) or not project_name.strip():
+            raise RepositoryIngestionException(
+                "INVALID_PROJECT_NAME", "A project name is required.", 422
+            )
+
+        response, source_chunks = await self._collect(uploads)
+        project_id, embeddings_created = await self._persist(
+            session,
+            response,
+            source_chunks,
+            project_name=project_name.strip(),
+        )
+        return ProjectIngestionResult(
+            project_id=project_id,
+            project_name=project_name.strip(),
+            files_processed=response.statistics.successful_files,
+            files_failed=response.statistics.failed_files,
+            chunks_created=response.statistics.total_chunks,
+            embeddings_created=embeddings_created,
+            errors=response.errors,
+        )
+
+    async def _collect(
+        self, uploads: list[UploadFile] | None
+    ) -> tuple[RepositoryIngestionResponse, list[CodeChunk]]:
         if not uploads:
             raise RepositoryIngestionException(
                 "EMPTY_BATCH", "At least one file is required.", 400
@@ -143,7 +189,7 @@ class RepositoryIngestionService:
             total_chunks=len(chunks),
             languages=language_counts,
         )
-        response = RepositoryIngestionResponse(
+        return RepositoryIngestionResponse(
             success=successful_files > 0,
             repository=RepositorySummary(
                 file_count=len(files), chunk_count=len(chunks)
@@ -152,17 +198,15 @@ class RepositoryIngestionService:
             chunks=chunks,
             statistics=statistics,
             errors=errors,
-        )
-        if session is not None and response.success:
-            await self._persist(session, response, source_chunks)
-        return response
+        ), source_chunks
 
     async def _persist(
         self,
         session: AsyncSession,
         response: RepositoryIngestionResponse,
         source_chunks: list[CodeChunk],
-    ) -> None:
+        project_name: str | None = None,
+    ) -> tuple[UUID, int]:
         if self.embedding_service is None:
             raise RepositoryIngestionException(
                 "EMBEDDING_NOT_CONFIGURED",
@@ -188,7 +232,8 @@ class RepositoryIngestionService:
                 422,
             )
 
-        project = Project(name=f"repository-{uuid4().hex[:12]}")
+        resolved_project_name = project_name or f"repository-{uuid4().hex[:12]}"
+        project = Project(name=resolved_project_name)
         session.add(project)
         await session.flush()
 
@@ -225,6 +270,7 @@ class RepositoryIngestionService:
                         )
                     )
             await session.commit()
+            return project.id, len(embeddings)
         except Exception as error:
             await session.rollback()
             raise RepositoryIngestionException(

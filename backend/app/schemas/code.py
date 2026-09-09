@@ -149,6 +149,16 @@ class RepositoryIngestionResponse(BaseModel):
     errors: list[RepositoryFileError] = Field(default_factory=list)
 
 
+class ProjectIngestionResult(BaseModel):
+    project_id: UUID
+    project_name: str
+    files_processed: int = Field(ge=0)
+    files_failed: int = Field(ge=0)
+    chunks_created: int = Field(ge=0)
+    embeddings_created: int = Field(ge=0)
+    errors: list[RepositoryFileError] = Field(default_factory=list)
+
+
 class EmbeddingMetadata(BaseModel):
     chunk_id: str
     dimension: int
