@@ -42,10 +42,12 @@ class CodeUploadService:
 
         raw_filename = upload.filename.replace("\\", "/")
         path_parts = [part for part in raw_filename.split("/") if part]
-        if preserve_filename and (
+        if (
             raw_filename.startswith("/")
             or PureWindowsPath(upload.filename).drive
             or ".." in path_parts
+            or "\x00" in upload.filename
+            or any(ord(character) < 32 for character in upload.filename)
         ):
             raise CodeUploadException(
                 "UNSAFE_FILENAME", "Uploaded filenames must use safe relative paths.", 400

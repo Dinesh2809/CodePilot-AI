@@ -31,7 +31,13 @@ async def search_code(
             project_id=request.project_id,
         )
     except SemanticSearchException as error:
-        status_code = 422 if error.code in {"EMPTY_TEXT", "INVALID_EMBEDDING_DIMENSION"} else 503
+        status_code = (
+            422
+            if error.code in {"EMPTY_TEXT", "INVALID_EMBEDDING_DIMENSION"}
+            else 404
+            if error.code == "PROJECT_NOT_FOUND"
+            else 503
+        )
         return JSONResponse(
             status_code=status_code,
             content=CodeSearchResponse(

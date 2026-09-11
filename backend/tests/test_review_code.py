@@ -254,6 +254,23 @@ def test_review_endpoint_with_project_id() -> None:
         assert call_args.kwargs.get("project_id") == MOCK_PROJECT_ID
 
 
+def test_review_endpoint_returns_project_not_found() -> None:
+    with patch("backend.app.api.routes.code_review.search_service") as mock_search:
+        mock_search.search = AsyncMock(
+            side_effect=SemanticSearchException(
+                "PROJECT_NOT_FOUND", "The requested project does not exist."
+            )
+        )
+
+        response = client.post(
+            "/api/v1/code/review",
+            json={"query": "Review", "project_id": str(MOCK_PROJECT_ID)},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "PROJECT_NOT_FOUND"
+
+
 def test_review_endpoint_partial_agent_failure() -> None:
     """Verify handling of partial agent failures in response."""
     finding = make_finding("performance", "low", "Inefficient query")

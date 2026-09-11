@@ -23,7 +23,7 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     if async_session_factory is None:
         raise HTTPException(
             status_code=503,
-            detail="Database is not configured. Set DATABASE_URL and run migrations.",
+            detail="Required database infrastructure is unavailable.",
         )
     async with async_session_factory() as session:
         yield session

@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -83,7 +84,19 @@ class RAGService:
                 [],
             )
         try:
-            answer = self.gemini_service.generate(build_rag_prompt(query, results))
+            generation = asyncio.to_thread(
+                self.gemini_service.generate, build_rag_prompt(query, results)
+            )
+            timeout_seconds = getattr(self.gemini_service, "timeout_seconds", None)
+            answer = (
+                await asyncio.wait_for(generation, timeout=timeout_seconds)
+                if timeout_seconds is not None
+                else await generation
+            )
         except GeminiServiceException as error:
             raise RAGServiceException(error.code, error.message) from error
+        except TimeoutError as error:
+            raise RAGServiceException(
+                "GEMINI_TIMEOUT", "The code assistant timed out while generating an answer."
+            ) from error
         return answer, results

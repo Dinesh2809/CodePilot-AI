@@ -10,11 +10,11 @@ from backend.app.db.session import engine
 def test_database_url_setting_from_env(monkeypatch) -> None:
     monkeypatch.setenv(
         "DATABASE_URL",
-        "postgresql+asyncpg://postgres:codepilot_dev_password@localhost:5433/codepilot",
+        "postgresql+asyncpg://postgres:test_password@localhost:5433/codepilot",
     )
     settings = Settings()
     assert settings.DATABASE_URL == (
-        "postgresql+asyncpg://postgres:codepilot_dev_password@localhost:5433/codepilot"
+        "postgresql+asyncpg://postgres:test_password@localhost:5433/codepilot"
     )
 
 

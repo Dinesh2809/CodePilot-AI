@@ -14,10 +14,12 @@ class GeminiService:
         api_key: str,
         model_name: str = "gemini-2.0-flash",
         client: Any | None = None,
+        timeout_seconds: float = 60.0,
     ) -> None:
         self.model_name = model_name
         self._api_key = api_key
         self._client = client
+        self.timeout_seconds = timeout_seconds
 
     def _get_client(self) -> Any:
         if self._client is not None:

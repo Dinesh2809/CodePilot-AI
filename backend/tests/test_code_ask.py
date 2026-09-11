@@ -1,5 +1,6 @@
 import asyncio
 from types import SimpleNamespace
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -172,3 +173,26 @@ def test_ask_endpoint_returns_response_structure(monkeypatch) -> None:
     assert body["query"] == "Where is authentication?"
     assert body["answer"] == "Authentication is in auth.py."
     assert body["retrieved_results"][0]["filename"] == "src/auth.py"
+
+
+def test_ask_passes_project_id_to_retrieval(monkeypatch) -> None:
+    project_id = uuid4()
+    calls = []
+
+    class FakeRAGService:
+        async def ask(self, session, query, top_k, project_id=None):
+            calls.append(project_id)
+            return "Project-scoped answer.", [RESULT]
+
+    monkeypatch.setattr(code_ask, "rag_service", FakeRAGService())
+    app.dependency_overrides[code_ask.get_db_session] = lambda: FakeSession()
+    try:
+        response = client.post(
+            "/api/v1/code/ask",
+            json={"query": "Where is authentication?", "project_id": str(project_id)},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert calls == [project_id]

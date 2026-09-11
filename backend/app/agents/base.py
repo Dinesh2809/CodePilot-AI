@@ -35,9 +35,19 @@ class CodeReviewAgent(ABC):
             self.specialist_instructions,
         )
         try:
-            response_text = await asyncio.to_thread(self.gemini_service.generate, prompt)
+            generation = asyncio.to_thread(self.gemini_service.generate, prompt)
+            timeout_seconds = getattr(self.gemini_service, "timeout_seconds", None)
+            response_text = (
+                await asyncio.wait_for(generation, timeout=timeout_seconds)
+                if timeout_seconds is not None
+                else await generation
+            )
         except GeminiServiceException as error:
             raise AgentException(error.code, error.message) from error
+        except TimeoutError as error:
+            raise AgentException(
+                "GEMINI_TIMEOUT", "The review agent timed out while generating findings."
+            ) from error
         except Exception as error:
             raise AgentException(
                 "AGENT_EXECUTION_FAILED", "The review agent could not complete analysis."

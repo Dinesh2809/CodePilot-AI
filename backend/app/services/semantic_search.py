@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db.models import CodeChunkRecord, CodeFile
+from ..db.models import CodeChunkRecord, CodeFile, Project
 from .embedding import EmbeddingService, EmbeddingServiceException
 
 
@@ -43,6 +43,20 @@ class SemanticSearchService:
                 "INVALID_EMBEDDING_DIMENSION",
                 f"Query embedding must have exactly {self.expected_dimension} dimensions.",
             )
+
+        if project_id is not None:
+            try:
+                project_exists = await session.scalar(
+                    select(Project.id).where(Project.id == project_id)
+                )
+            except Exception as error:
+                raise SemanticSearchException(
+                    "SEARCH_FAILED", "Unable to search code chunks."
+                ) from error
+            if project_exists is None:
+                raise SemanticSearchException(
+                    "PROJECT_NOT_FOUND", "The requested project does not exist."
+                )
 
         distance = CodeChunkRecord.embedding.cosine_distance(query_embedding.embedding)
         statement: Select[tuple[CodeChunkRecord, CodeFile, float]] = (

@@ -15,7 +15,11 @@ router = APIRouter(prefix=f"{settings.API_V1_PREFIX}/code", tags=["code"])
 search_service = SemanticSearchService(EmbeddingService(settings.EMBEDDING_MODEL))
 rag_service = RAGService(
     search_service,
-    GeminiService(settings.GEMINI_API_KEY, model_name=settings.GEMINI_MODEL),
+    GeminiService(
+        settings.GEMINI_API_KEY,
+        model_name=settings.GEMINI_MODEL,
+        timeout_seconds=settings.GEMINI_TIMEOUT_SECONDS,
+    ),
 )
 
 
@@ -29,7 +33,15 @@ async def ask_code(
             session, request.query, request.top_k, request.project_id
         )
     except RAGServiceException as error:
-        status_code = 422 if error.code in {"EMPTY_TEXT", "INVALID_EMBEDDING_DIMENSION"} else 503
+        status_code = (
+            422
+            if error.code in {"EMPTY_TEXT", "INVALID_EMBEDDING_DIMENSION"}
+            else 404
+            if error.code == "PROJECT_NOT_FOUND"
+            else 504
+            if error.code == "GEMINI_TIMEOUT"
+            else 503
+        )
         return JSONResponse(
             status_code=status_code,
             content=CodeAskResponse(

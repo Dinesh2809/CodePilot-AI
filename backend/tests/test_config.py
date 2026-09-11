@@ -20,12 +20,21 @@ def test_env_loading(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("DEBUG", "false")
     monkeypatch.setenv("API_V1_PREFIX", "/v2")
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://postgres:test_password@localhost:5433/codepilot",
+    )
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
 
     s = Settings()
     assert s.APP_NAME == "MyApp"
     assert s.APP_ENV == "production"
     assert s.DEBUG is False
     assert s.API_V1_PREFIX == "/v2"
+    assert s.DATABASE_URL.startswith("postgresql+asyncpg://")
+    assert s.GEMINI_API_KEY == "test-gemini-key"
+    assert s.CORS_ORIGINS == ["https://app.example.com"]
 
 
 def test_shared_instance_reflects_env(monkeypatch) -> None:
@@ -37,3 +46,56 @@ def test_shared_instance_reflects_env(monkeypatch) -> None:
     # The module-level `settings` was created at import time and may not reflect
     # runtime monkeypatch; ensure it's an instance of Settings
     assert isinstance(settings, Settings)
+
+
+def test_production_requires_explicit_runtime_settings(monkeypatch) -> None:
+    for name in ("DATABASE_URL", "GEMINI_API_KEY", "CORS_ORIGINS"):
+        monkeypatch.delenv(name, raising=False)
+
+    try:
+        Settings(_env_file=None, APP_ENV="production", DEBUG=False)
+    except ValueError as error:
+        message = str(error)
+        assert "DATABASE_URL" in message
+    else:
+        raise AssertionError("Expected missing production settings to fail")
+
+
+def test_production_accepts_safe_explicit_settings() -> None:
+    production = Settings(
+        _env_file=None,
+        APP_ENV="production",
+        DEBUG=False,
+        DATABASE_URL="postgresql+asyncpg://service:password@db.example.com/codepilot",
+        GEMINI_API_KEY="test-only-key",
+        CORS_ORIGINS=["https://app.example.com"],
+    )
+
+    assert production.APP_ENV == "production"
+    assert production.DEBUG is False
+    assert production.CORS_ORIGINS == ["https://app.example.com"]
+    assert production.GEMINI_API_KEY == "test-only-key"
+
+
+def test_production_requires_explicit_cors_origins() -> None:
+    try:
+        Settings(
+            _env_file=None,
+            APP_ENV="production",
+            DEBUG=False,
+            DATABASE_URL="postgresql+asyncpg://service:password@db.example.com/codepilot",
+            GEMINI_API_KEY="test-only-key",
+        )
+    except ValueError as error:
+        assert "CORS_ORIGINS" in str(error)
+    else:
+        raise AssertionError("Expected production CORS configuration to be required")
+
+
+def test_wildcard_cors_is_rejected() -> None:
+    try:
+        Settings(CORS_ORIGINS=["*"])
+    except ValueError as error:
+        assert "wildcard" in str(error)
+    else:
+        raise AssertionError("Expected wildcard CORS to fail")

@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -36,9 +37,19 @@ class FakeResult:
 
 
 class FakeSession:
-    def __init__(self, rows: list[tuple[object, object, float]]) -> None:
+    def __init__(
+        self,
+        rows: list[tuple[object, object, float]],
+        project_exists: bool = True,
+    ) -> None:
         self.rows = rows
+        self.project_exists = project_exists
         self.statement = None
+        self.project_statement = None
+
+    async def scalar(self, statement):
+        self.project_statement = statement
+        return uuid4() if self.project_exists else None
 
     async def execute(self, statement):
         self.statement = statement
@@ -109,6 +120,35 @@ def test_semantic_search_applies_top_k_and_project_filter() -> None:
     assert len(session.statement._where_criteria) == 1
 
 
+def test_semantic_search_rejects_nonexistent_project() -> None:
+    import asyncio
+
+    project_id = uuid4()
+    session = FakeSession([], project_exists=False)
+
+    with pytest.raises(SemanticSearchException) as error:
+        asyncio.run(
+            SemanticSearchService(FakeEmbeddingService()).search(
+                session, "query", project_id=project_id
+            )
+        )
+
+    assert error.value.code == "PROJECT_NOT_FOUND"
+    assert session.statement is None
+
+
+def test_semantic_search_returns_empty_for_existing_project_without_chunks() -> None:
+    import asyncio
+
+    results = asyncio.run(
+        SemanticSearchService(FakeEmbeddingService()).search(
+            FakeSession([], project_exists=True), "query", project_id=uuid4()
+        )
+    )
+
+    assert results == []
+
+
 def test_search_endpoint_validates_empty_query_and_top_k() -> None:
     response = client.post("/api/v1/code/search", json={"query": "", "top_k": 0})
 
@@ -156,3 +196,27 @@ def test_search_endpoint_returns_result(monkeypatch) -> None:
     assert body["success"] is True
     assert body["result_count"] == 1
     assert body["results"][0]["similarity"] == 0.8
+
+
+def test_search_endpoint_returns_project_not_found(monkeypatch) -> None:
+    monkeypatch.setattr(
+        code_search,
+        "semantic_search_service",
+        SemanticSearchService(FakeEmbeddingService()),
+    )
+    session = FakeSession([], project_exists=False)
+    app.dependency_overrides[code_search.get_db_session] = lambda: session
+    project_id = uuid4()
+    try:
+        response = client.post(
+            "/api/v1/code/search",
+            json={"query": "authentication", "project_id": str(project_id)},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"] == {
+        "code": "PROJECT_NOT_FOUND",
+        "message": "The requested project does not exist.",
+    }

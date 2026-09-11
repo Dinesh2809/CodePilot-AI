@@ -1,6 +1,13 @@
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
+
+
+QueryText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=4000),
+]
 
 
 class CodeFileMetadata(BaseModel):
@@ -175,7 +182,7 @@ class EmbeddingResponse(BaseModel):
 
 
 class CodeSearchRequest(BaseModel):
-    query: str = Field(min_length=1)
+    query: QueryText
     top_k: int = Field(default=5, ge=1, le=50)
     project_id: UUID | None = None
 
@@ -203,7 +210,7 @@ class CodeSearchResponse(BaseModel):
 
 
 class CodeAskRequest(BaseModel):
-    query: str = Field(min_length=1)
+    query: QueryText
     top_k: int = Field(default=5, ge=1, le=50)
     project_id: UUID | None = None
 
@@ -217,7 +224,7 @@ class CodeAskResponse(BaseModel):
 
 
 class CodeReviewRequest(BaseModel):
-    query: str = Field(min_length=1)
+    query: QueryText
     top_k: int = Field(default=10, ge=1, le=50)
     project_id: UUID | None = None
 

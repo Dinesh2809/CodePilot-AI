@@ -13,7 +13,11 @@ from ...services.semantic_search import SemanticSearchException, SemanticSearchS
 
 router = APIRouter(prefix=f"{settings.API_V1_PREFIX}/code", tags=["code"])
 search_service = SemanticSearchService(EmbeddingService(settings.EMBEDDING_MODEL))
-gemini_service = GeminiService(settings.GEMINI_API_KEY, model_name=settings.GEMINI_MODEL)
+gemini_service = GeminiService(
+    settings.GEMINI_API_KEY,
+    model_name=settings.GEMINI_MODEL,
+    timeout_seconds=settings.GEMINI_TIMEOUT_SECONDS,
+)
 orchestrator = ReviewOrchestrator(gemini_service)
 
 
@@ -37,7 +41,15 @@ async def review_code(
             session, request.query, top_k=request.top_k, project_id=request.project_id
         )
     except SemanticSearchException as error:
-        status_code = 422 if error.code in {"EMPTY_TEXT", "INVALID_EMBEDDING_DIMENSION"} else 503
+        status_code = (
+            422
+            if error.code in {"EMPTY_TEXT", "INVALID_EMBEDDING_DIMENSION"}
+            else 404
+            if error.code == "PROJECT_NOT_FOUND"
+            else 504
+            if error.code == "GEMINI_TIMEOUT"
+            else 503
+        )
         return JSONResponse(
             status_code=status_code,
             content=CodeReviewResponse(
