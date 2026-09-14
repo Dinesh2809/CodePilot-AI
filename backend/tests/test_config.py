@@ -99,3 +99,37 @@ def test_wildcard_cors_is_rejected() -> None:
         assert "wildcard" in str(error)
     else:
         raise AssertionError("Expected wildcard CORS to fail")
+
+
+def test_managed_postgres_url_is_normalized_for_asyncpg() -> None:
+    settings = Settings(
+        _env_file=None,
+        DATABASE_URL="postgres://service:password@db.example.com:5432/codepilot",
+    )
+
+    assert settings.DATABASE_URL.startswith("postgresql+asyncpg://")
+    assert "db.example.com:5432/codepilot" in settings.DATABASE_URL
+
+
+def test_provider_sslmode_is_translated_for_asyncpg() -> None:
+    settings = Settings(
+        _env_file=None,
+        DATABASE_URL=(
+            "postgresql://service:password@db.example.com:5432/codepilot"
+            "?sslmode=require"
+        ),
+    )
+
+    assert settings.DATABASE_SSL_MODE == "require"
+    assert "ssl=require" in settings.DATABASE_URL
+    assert "sslmode" not in settings.DATABASE_URL
+
+
+def test_database_ssl_mode_can_be_configured_separately() -> None:
+    settings = Settings(
+        _env_file=None,
+        DATABASE_URL="postgresql+asyncpg://service:password@db.example.com/codepilot",
+        DATABASE_SSL_MODE="require",
+    )
+
+    assert "ssl=require" in settings.DATABASE_URL
