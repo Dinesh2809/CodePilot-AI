@@ -16,7 +16,10 @@ from ...services.repository_ingestion import (
 router = APIRouter(prefix=f"{settings.API_V1_PREFIX}/code", tags=["code"])
 repository_ingestion_service = RepositoryIngestionService(
     upload_service=CodeUploadService(settings.MAX_UPLOAD_SIZE_MB),
-    embedding_service=EmbeddingService(settings.EMBEDDING_MODEL),
+    embedding_service=EmbeddingService(
+        settings.EMBEDDING_MODEL,
+        batch_size=settings.EMBEDDING_BATCH_SIZE,
+    ),
     max_files_per_batch=settings.MAX_FILES_PER_BATCH,
 )
 

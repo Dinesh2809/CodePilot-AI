@@ -26,9 +26,11 @@ class EmbeddingService:
         self,
         model_name: str,
         model_factory: Callable[[str], Any] | None = None,
+        batch_size: int = 1,
     ) -> None:
         self.model_name = model_name
         self._model_factory = model_factory or self._create_model
+        self.batch_size = batch_size
         self._model: Any | None = None
         self._dimension: int | None = None
 
@@ -64,6 +66,7 @@ class EmbeddingService:
         try:
             vectors = model.encode(
                 [chunk.content for chunk in chunks],
+                batch_size=self.batch_size,
                 normalize_embeddings=True,
                 convert_to_numpy=True,
                 show_progress_bar=False,

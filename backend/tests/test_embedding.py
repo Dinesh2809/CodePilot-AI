@@ -28,13 +28,17 @@ class FakeModel:
     def __init__(self) -> None:
         self.calls = 0
         self.last_texts: list[str] = []
+        self.last_batch_size: int | None = None
 
     def get_sentence_embedding_dimension(self) -> int:
         return 3
 
-    def encode(self, texts: list[str], **_: object) -> list[list[float]]:
+    def encode(
+        self, texts: list[str], batch_size: int = 0, **_: object
+    ) -> list[list[float]]:
         self.calls += 1
         self.last_texts = texts
+        self.last_batch_size = batch_size
         vectors = []
         for text in texts:
             vector = [float(len(text)), float(sum(ord(char) for char in text) % 97), 1.0]
@@ -68,6 +72,14 @@ def test_multiple_chunks_are_batched_and_ordered() -> None:
     assert [result.chunk_id for result in results] == ["first", "second"]
     assert model.calls == 1
     assert model.last_texts == ["alpha", "beta"]
+
+
+def test_embedding_uses_memory_bounded_batch_size() -> None:
+    service, model = service_with_fake_model()
+
+    service.embed_chunks([make_chunk("first", "alpha")])
+
+    assert model.last_batch_size == 1
 
 
 def test_empty_text_and_empty_chunk_list() -> None:

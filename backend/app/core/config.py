@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = Field(default=5, gt=0, le=100)
     MAX_FILES_PER_BATCH: int = Field(default=50, gt=0, le=1000)
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    EMBEDDING_BATCH_SIZE: int = Field(default=1, gt=0, le=32)
     DATABASE_URL: str = ""
     DATABASE_SSL_MODE: str = ""
     GEMINI_API_KEY: str = ""

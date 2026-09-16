@@ -11,6 +11,7 @@ def test_defaults() -> None:
     assert s.API_V1_PREFIX == "/api/v1"
     assert s.MAX_FILES_PER_BATCH == 50
     assert s.EMBEDDING_MODEL == "all-MiniLM-L6-v2"
+    assert s.EMBEDDING_BATCH_SIZE == 1
     assert isinstance(s.GEMINI_API_KEY, str)
     assert s.GEMINI_MODEL == "gemini-3.6-flash"
 
