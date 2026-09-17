@@ -26,7 +26,9 @@ def test_env_loading(monkeypatch) -> None:
         "postgresql+asyncpg://postgres:test_password@localhost:5433/codepilot",
     )
     monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
-    monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
+    monkeypatch.setenv(
+        "CORS_ORIGINS", '["https://codepilot-ai-1-pjss.onrender.com"]'
+    )
 
     s = Settings()
     assert s.APP_NAME == "MyApp"
@@ -35,7 +37,7 @@ def test_env_loading(monkeypatch) -> None:
     assert s.API_V1_PREFIX == "/v2"
     assert s.DATABASE_URL.startswith("postgresql+asyncpg://")
     assert s.GEMINI_API_KEY == "test-gemini-key"
-    assert s.CORS_ORIGINS == ["https://app.example.com"]
+    assert s.CORS_ORIGINS == ["https://codepilot-ai-1-pjss.onrender.com"]
 
 
 def test_shared_instance_reflects_env(monkeypatch) -> None:

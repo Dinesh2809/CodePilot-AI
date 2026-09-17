@@ -1,6 +1,7 @@
 import asyncio
 
 from fastapi.testclient import TestClient
+from starlette.middleware.cors import CORSMiddleware
 
 from app.main import app
 from backend.app.agents import SecurityAgent
@@ -91,6 +92,43 @@ def test_cors_allows_configured_development_origin() -> None:
 
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
     assert "*" not in response.headers["access-control-allow-origin"]
+
+
+def test_cors_allows_production_frontend_origin_for_preflight(monkeypatch) -> None:
+    cors_middleware = next(
+        middleware
+        for middleware in app.user_middleware
+        if middleware.cls is CORSMiddleware
+    )
+    monkeypatch.setitem(
+        cors_middleware.kwargs,
+        "allow_origins",
+        ["https://codepilot-ai-1-pjss.onrender.com"],
+    )
+    monkeypatch.setattr(app, "middleware_stack", None)
+
+    response = client.options(
+        "/api/v1/code/search",
+        headers={
+            "Origin": "https://codepilot-ai-1-pjss.onrender.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type, authorization",
+        },
+    )
+
+    assert response.status_code == 200
+    assert (
+        response.headers["access-control-allow-origin"]
+        == "https://codepilot-ai-1-pjss.onrender.com"
+    )
+    assert (
+        response.headers["access-control-allow-methods"]
+        == "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT"
+    )
+    assert (
+        response.headers["access-control-allow-headers"]
+        == "content-type, authorization"
+    )
 
 
 def test_production_settings_do_not_enable_debug_by_default() -> None:
