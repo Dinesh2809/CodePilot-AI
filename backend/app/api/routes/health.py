@@ -21,8 +21,22 @@ class ReadinessResponse(BaseModel):
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health(db: AsyncSession = Depends(get_db)) -> HealthResponse:
-    await db.execute(text("SELECT 1"))
+async def health(
+    db: AsyncSession = Depends(get_db),
+) -> HealthResponse | JSONResponse:
+    try:
+        await db.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "error": {
+                    "code": "DATABASE_UNAVAILABLE",
+                    "message": "Required infrastructure is unavailable.",
+                },
+            },
+        )
     return {"status": "healthy"}
 
 
