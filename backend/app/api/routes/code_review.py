@@ -5,14 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...core.config import settings
 from ...db.session import get_db_session
 from ...schemas.code import CodeReviewRequest, CodeReviewResponse, CodeUploadError
-from ...services.embedding import EmbeddingService
+from ...services.embedding import shared_embedding_service
 from ...services.gemini import GeminiService, GeminiServiceException
 from ...services.review_orchestrator import ReviewOrchestrator
 from ...services.semantic_search import SemanticSearchException, SemanticSearchService
 
 
 router = APIRouter(prefix=f"{settings.API_V1_PREFIX}/code", tags=["code"])
-search_service = SemanticSearchService(EmbeddingService(settings.EMBEDDING_MODEL))
+search_service = SemanticSearchService(shared_embedding_service)
 gemini_service = GeminiService(
     settings.GEMINI_API_KEY,
     model_name=settings.GEMINI_MODEL,

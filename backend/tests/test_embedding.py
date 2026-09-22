@@ -3,9 +3,9 @@ import math
 from fastapi.testclient import TestClient
 
 from app.main import app
-from backend.app.api.routes import code_embed
 from app.schemas.code import CodeChunk
 from app.services.embedding import EmbeddingService, EmbeddingServiceException
+from backend.app.api.routes import code_ask, code_batch, code_embed, code_review, code_search
 
 
 client = TestClient(app)
@@ -119,6 +119,13 @@ def test_model_is_loaded_once_and_reused() -> None:
 
     assert len(created) == 1
     assert created[0].calls == 2
+
+
+def test_embedding_service_is_shared_across_embedding_routes() -> None:
+    assert code_batch.repository_ingestion_service.embedding_service is code_embed.embedding_service
+    assert code_search.semantic_search_service.embedding_service is code_embed.embedding_service
+    assert code_ask.search_service.embedding_service is code_embed.embedding_service
+    assert code_review.search_service.embedding_service is code_embed.embedding_service
 
 
 def test_model_loading_failure_is_structured() -> None:

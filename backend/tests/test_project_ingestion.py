@@ -15,7 +15,11 @@ from backend.app.services.repository_ingestion import (
 
 
 class FakeEmbeddingService:
+    def __init__(self) -> None:
+        self.calls: list[int] = []
+
     def embed_chunks(self, chunks):
+        self.calls.append(len(chunks))
         return [
             InMemoryEmbedding(chunk.chunk_id, 384, [0.0] * 384)
             for chunk in chunks
@@ -26,11 +30,13 @@ class FakeSession:
     def __init__(self) -> None:
         self.records = []
         self.committed = False
+        self.flush_count = 0
 
     def add(self, record) -> None:
         self.records.append(record)
 
     async def flush(self) -> None:
+        self.flush_count += 1
         if getattr(self.records[-1], "id", None) is None:
             self.records[-1].id = uuid4()
 
@@ -50,6 +56,52 @@ def service() -> RepositoryIngestionService:
         upload_service=CodeUploadService(5),
         embedding_service=FakeEmbeddingService(),
     )
+
+
+def test_ingest_embeds_and_flushes_bounded_groups() -> None:
+    embedding_service = FakeEmbeddingService()
+    ingestion_service = RepositoryIngestionService(
+        upload_service=CodeUploadService(5),
+        embedding_service=embedding_service,
+        embedding_group_size=1,
+    )
+    session = FakeSession()
+
+    result = asyncio.run(
+        ingestion_service.ingest(
+            "grouped-project",
+            [
+                upload("first.py", b"value = 1\n"),
+                upload("second.py", b"value = 2\n"),
+            ],
+            session,
+        )
+    )
+
+    assert result.embeddings_created == 2
+    assert embedding_service.calls == [1, 1]
+    assert session.flush_count == 5
+    assert session.committed is True
+
+
+def test_ingest_rejects_aggregate_upload_limit() -> None:
+    ingestion_service = RepositoryIngestionService(
+        upload_service=CodeUploadService(5),
+        embedding_service=FakeEmbeddingService(),
+        max_total_upload_size_mb=1,
+    )
+
+    with pytest.raises(RepositoryIngestionException) as error:
+        asyncio.run(
+            ingestion_service.ingest(
+                "large-project",
+                [upload("large.py", b"x" * (1024 * 1024 + 1))],
+                FakeSession(),
+            )
+        )
+
+    assert error.value.code == "BATCH_TOO_LARGE"
+    assert error.value.status_code == 413
 
 
 def test_ingest_persists_project_files_chunks_and_embeddings() -> None:

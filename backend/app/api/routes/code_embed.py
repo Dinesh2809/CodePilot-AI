@@ -10,13 +10,13 @@ from ...schemas.code import (
 )
 from ...services.code_chunker import PythonCodeChunker
 from ...services.code_upload import CodeUploadException, CodeUploadService
-from ...services.embedding import EmbeddingService, EmbeddingServiceException
+from ...services.embedding import EmbeddingServiceException, shared_embedding_service
 
 
 router = APIRouter(prefix=f"{settings.API_V1_PREFIX}/code", tags=["code"])
 upload_service = CodeUploadService(settings.MAX_UPLOAD_SIZE_MB)
 python_chunker = PythonCodeChunker()
-embedding_service = EmbeddingService(settings.EMBEDDING_MODEL)
+embedding_service = shared_embedding_service
 
 
 @router.post(

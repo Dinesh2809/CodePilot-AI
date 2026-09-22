@@ -17,8 +17,10 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     MAX_UPLOAD_SIZE_MB: int = Field(default=5, gt=0, le=100)
     MAX_FILES_PER_BATCH: int = Field(default=50, gt=0, le=1000)
+    MAX_TOTAL_UPLOAD_SIZE_MB: int = Field(default=25, gt=0, le=500)
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     EMBEDDING_BATCH_SIZE: int = Field(default=1, gt=0, le=32)
+    EMBEDDING_PERSIST_GROUP_SIZE: int = Field(default=8, gt=0, le=128)
     DATABASE_URL: str = ""
     DATABASE_SSL_MODE: str = ""
     GEMINI_API_KEY: str = ""

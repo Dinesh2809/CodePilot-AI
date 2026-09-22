@@ -37,11 +37,15 @@ class RepositoryIngestionService:
         python_chunker: PythonCodeChunker | None = None,
         embedding_service: EmbeddingService | None = None,
         max_files_per_batch: int = 50,
+        max_total_upload_size_mb: int = 25,
+        embedding_group_size: int = 8,
     ) -> None:
         self.upload_service = upload_service
         self.python_chunker = python_chunker or PythonCodeChunker()
         self.embedding_service = embedding_service
         self.max_files_per_batch = max_files_per_batch
+        self.max_total_upload_size_bytes = max_total_upload_size_mb * 1024 * 1024
+        self.embedding_group_size = embedding_group_size
 
     async def process(
         self,
@@ -102,6 +106,7 @@ class RepositoryIngestionService:
                 413,
             )
 
+        total_upload_size_bytes = 0
         files: list[RepositoryFile] = []
         chunks: list[RepositoryChunk] = []
         source_chunks: list[CodeChunk] = []
@@ -113,6 +118,13 @@ class RepositoryIngestionService:
 
         for upload in uploads:
             filename = upload.filename or "[missing]"
+            total_upload_size_bytes += self._upload_size(upload)
+            if total_upload_size_bytes > self.max_total_upload_size_bytes:
+                raise RepositoryIngestionException(
+                    "BATCH_TOO_LARGE",
+                    "The uploaded files exceed the maximum total request size.",
+                    413,
+                )
             try:
                 metadata, source = await self.upload_service.read_source(
                     upload, preserve_filename=True
@@ -214,30 +226,13 @@ class RepositoryIngestionService:
                 503,
             )
 
-        chunks_by_id = {chunk.chunk_id: chunk for chunk in source_chunks}
-        try:
-            embeddings = self.embedding_service.embed_chunks(
-                source_chunks
-            )
-        except EmbeddingServiceException as error:
-            raise RepositoryIngestionException(error.code, error.message, 503) from error
-        if any(
-            embedding.dimension != EXPECTED_EMBEDDING_DIMENSION
-            or len(embedding.embedding) != EXPECTED_EMBEDDING_DIMENSION
-            for embedding in embeddings
-        ):
-            raise RepositoryIngestionException(
-                "INVALID_EMBEDDING_DIMENSION",
-                "Chunk embeddings must have exactly 384 dimensions.",
-                422,
-            )
-
         resolved_project_name = project_name or f"repository-{uuid4().hex[:12]}"
         project = Project(name=resolved_project_name)
         session.add(project)
         await session.flush()
 
         try:
+            file_ids_by_filename: dict[str, list[UUID]] = {}
             for file_metadata in response.files:
                 code_file = CodeFile(
                     project_id=project.id,
@@ -249,33 +244,73 @@ class RepositoryIngestionService:
                 )
                 session.add(code_file)
                 await session.flush()
-                for chunk in response.chunks:
-                    if chunk.filename != file_metadata.filename:
-                        continue
-                    source_chunk = chunks_by_id[chunk.chunk_id]
-                    embedding = next(
-                        item for item in embeddings if item.chunk_id == chunk.chunk_id
+                file_ids_by_filename.setdefault(file_metadata.filename, []).append(
+                    code_file.id
+                )
+
+            chunk_offset = 0
+            while source_chunks:
+                source_group = source_chunks[: self.embedding_group_size]
+                del source_chunks[: len(source_group)]
+                response_group = response.chunks[
+                    chunk_offset : chunk_offset + len(source_group)
+                ]
+                chunk_offset += len(source_group)
+
+                try:
+                    embeddings = self.embedding_service.embed_chunks(source_group)
+                except EmbeddingServiceException as error:
+                    raise RepositoryIngestionException(
+                        error.code, error.message, 503
+                    ) from error
+                if any(
+                    embedding.dimension != EXPECTED_EMBEDDING_DIMENSION
+                    or len(embedding.embedding) != EXPECTED_EMBEDDING_DIMENSION
+                    for embedding in embeddings
+                ):
+                    raise RepositoryIngestionException(
+                        "INVALID_EMBEDDING_DIMENSION",
+                        "Chunk embeddings must have exactly 384 dimensions.",
+                        422,
                     )
-                    session.add(
-                        CodeChunkRecord(
-                            file_id=code_file.id,
-                            chunk_id=chunk.chunk_id,
-                            chunk_type=chunk.chunk_type,
-                            name=chunk.name,
-                            start_line=chunk.start_line,
-                            end_line=chunk.end_line,
-                            content=source_chunk.content,
-                            language=chunk.language,
-                            embedding=embedding.embedding,
+
+                for source_chunk, chunk, embedding in zip(
+                    source_group, response_group, embeddings, strict=True
+                ):
+                    for file_id in file_ids_by_filename[chunk.filename]:
+                        session.add(
+                            CodeChunkRecord(
+                                file_id=file_id,
+                                chunk_id=chunk.chunk_id,
+                                chunk_type=chunk.chunk_type,
+                                name=chunk.name,
+                                start_line=chunk.start_line,
+                                end_line=chunk.end_line,
+                                content=source_chunk.content,
+                                language=chunk.language,
+                                embedding=embedding.embedding,
+                            )
                         )
-                    )
+                await session.flush()
+                del embeddings, source_group, response_group
+
             await session.commit()
-            return project.id, len(embeddings)
+            return project.id, chunk_offset
+        except RepositoryIngestionException:
+            await session.rollback()
+            raise
         except Exception as error:
             await session.rollback()
             raise RepositoryIngestionException(
                 "PERSISTENCE_FAILED", "Unable to persist ingested code.", 503
             ) from error
+
+    @staticmethod
+    def _upload_size(upload: UploadFile) -> int:
+        upload.file.seek(0, 2)
+        size_bytes = upload.file.tell()
+        upload.file.seek(0)
+        return size_bytes
 
     @staticmethod
     def _repository_chunk(chunk: CodeChunk) -> RepositoryChunk:

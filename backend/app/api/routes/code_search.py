@@ -9,12 +9,12 @@ from ...schemas.code import (
     CodeSearchResponse,
     CodeUploadError,
 )
-from ...services.embedding import EmbeddingService
+from ...services.embedding import shared_embedding_service
 from ...services.semantic_search import SemanticSearchException, SemanticSearchService
 
 
 router = APIRouter(prefix=f"{settings.API_V1_PREFIX}/code", tags=["code"])
-embedding_service = EmbeddingService(settings.EMBEDDING_MODEL)
+embedding_service = shared_embedding_service
 semantic_search_service = SemanticSearchService(embedding_service)
 
 

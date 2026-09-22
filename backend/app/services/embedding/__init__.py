@@ -3,5 +3,11 @@ from .service import (
     EmbeddingServiceException,
     InMemoryEmbedding,
 )
+from .shared import shared_embedding_service
 
-__all__ = ["EmbeddingService", "EmbeddingServiceException", "InMemoryEmbedding"]
+__all__ = [
+    "EmbeddingService",
+    "EmbeddingServiceException",
+    "InMemoryEmbedding",
+    "shared_embedding_service",
+]

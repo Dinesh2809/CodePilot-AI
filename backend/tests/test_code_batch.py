@@ -161,6 +161,25 @@ def test_empty_batch_is_rejected() -> None:
     assert response.json()["error"]["code"] == "EMPTY_BATCH"
 
 
+def test_aggregate_upload_limit_is_structured(monkeypatch) -> None:
+    monkeypatch.setattr(
+        code_batch.repository_ingestion_service,
+        "max_total_upload_size_bytes",
+        1,
+    )
+
+    response = client.post(
+        BATCH_URL,
+        files=multipart_files(("large.py", b"x = 1\n")),
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error"] == {
+        "code": "BATCH_TOO_LARGE",
+        "message": "The uploaded files exceed the maximum total request size.",
+    }
+
+
 def test_batch_file_limit_is_enforced() -> None:
     files = [(f"file_{index}.py", b"x = 1\n") for index in range(51)]
     response = client.post(BATCH_URL, files=multipart_files(*files))
