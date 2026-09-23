@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +16,7 @@ from ...services.repository_ingestion import (
 
 
 router = APIRouter(prefix=f"{settings.API_V1_PREFIX}/code", tags=["code"])
+logger = logging.getLogger(__name__)
 repository_ingestion_service = RepositoryIngestionService(
     upload_service=CodeUploadService(settings.MAX_UPLOAD_SIZE_MB),
     embedding_service=shared_embedding_service,
@@ -32,9 +35,18 @@ async def upload_batch(
     files: list[UploadFile] = File(default=[]),
     session: AsyncSession = Depends(get_db_session),
 ) -> RepositoryIngestionResponse:
+    logger.info("upload-batch request received")
+    logger.info(
+        "upload-batch files received count=%d files=%s",
+        len(files),
+        [(upload.filename or "[missing]", repository_ingestion_service._upload_size(upload)) for upload in files],
+    )
     try:
-        return await repository_ingestion_service.process(files, session)
+        response = await repository_ingestion_service.process(files, session)
+        logger.info("upload-batch response returning success=%s files=%d chunks=%d", response.success, len(response.files), len(response.chunks))
+        return response
     except RepositoryIngestionException as error:
+        logger.exception("upload-batch ingestion failed code=%s", error.code)
         return JSONResponse(
             status_code=error.status_code,
             content={
@@ -44,3 +56,6 @@ async def upload_batch(
                 ).model_dump(),
             },
         )
+    except Exception:
+        logger.exception("upload-batch request failed unexpectedly")
+        raise

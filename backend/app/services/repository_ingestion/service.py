@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 from uuid import UUID, uuid4
 
 from fastapi import UploadFile
@@ -21,6 +22,7 @@ from ..embedding import EmbeddingService, EmbeddingServiceException
 
 
 EXPECTED_EMBEDDING_DIMENSION = 384
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -98,7 +100,9 @@ class RepositoryIngestionService:
                 413,
             )
 
+        logger.info("upload-batch validation starting file_count=%d", len(uploads))
         self._validate_total_upload_size(uploads)
+        logger.info("upload-batch validation completed")
         files: list[RepositoryFile] = []
         chunks: list[RepositoryChunk] = []
         errors: list[RepositoryFileError] = []
@@ -112,13 +116,25 @@ class RepositoryIngestionService:
         try:
             for upload in uploads:
                 filename = upload.filename or "[missing]"
+                logger.info(
+                    "upload-batch reading file filename=%s size_bytes=%d",
+                    filename,
+                    self._upload_size(upload),
+                )
                 try:
                     metadata, source = await self.upload_service.read_source(
                         upload, preserve_filename=True
                     )
                 except CodeUploadException as error:
+                    logger.info("upload-batch file validation failed filename=%s code=%s", filename, error.code)
                     errors.append(self._error(filename, error))
                     continue
+                logger.info(
+                    "upload-batch file read filename=%s size_bytes=%d lines=%d",
+                    metadata.filename,
+                    metadata.size_bytes,
+                    metadata.line_count,
+                )
 
                 total_lines += metadata.line_count
                 total_size_bytes += metadata.size_bytes
@@ -145,6 +161,7 @@ class RepositoryIngestionService:
                     continue
 
                 try:
+                    logger.info("upload-batch parsing and chunking filename=%s", metadata.filename)
                     result = self.python_chunker.chunk(source, metadata.filename)
                 except ValueError as error:
                     files.append(
@@ -165,10 +182,16 @@ class RepositoryIngestionService:
                             message=str(error),
                         )
                     )
+                    logger.info("upload-batch chunking failed filename=%s", metadata.filename)
                     del source
                     continue
 
                 file_chunks = [self._repository_chunk(chunk) for chunk in result.chunks]
+                logger.info(
+                    "upload-batch chunking completed filename=%s chunk_count=%d",
+                    metadata.filename,
+                    len(result.chunks),
+                )
                 del source
                 chunks.extend(file_chunks)
                 file_metadata = RepositoryFile(
@@ -191,8 +214,11 @@ class RepositoryIngestionService:
                 del result, file_chunks
 
             if session is not None and project is not None:
+                logger.info("upload-batch final database commit starting")
                 await session.commit()
+                logger.info("upload-batch final database commit completed")
         except Exception:
+            logger.exception("upload-batch pipeline failed")
             if session is not None:
                 await session.rollback()
             raise
@@ -238,10 +264,18 @@ class RepositoryIngestionService:
             line_count=file_metadata.line_count,
         )
         session.add(code_file)
+        logger.info("upload-batch database file flush starting filename=%s", file_metadata.filename)
         await session.flush()
+        logger.info("upload-batch database file flush completed filename=%s", file_metadata.filename)
         embeddings_created = 0
         for start in range(0, len(source_chunks), self.embedding_group_size):
             source_group = source_chunks[start : start + self.embedding_group_size]
+            logger.info(
+                "upload-batch embedding group starting filename=%s start=%d count=%d",
+                file_metadata.filename,
+                start,
+                len(source_group),
+            )
             try:
                 embeddings = self.embedding_service.embed_chunks(source_group)
             except EmbeddingServiceException as error:
@@ -256,6 +290,12 @@ class RepositoryIngestionService:
                     "Chunk embeddings must have exactly 384 dimensions.",
                     422,
                 )
+            logger.info(
+                "upload-batch embedding group completed filename=%s start=%d count=%d",
+                file_metadata.filename,
+                start,
+                len(embeddings),
+            )
             for source_chunk, embedding in zip(source_group, embeddings, strict=True):
                 session.add(
                     CodeChunkRecord(
@@ -270,7 +310,17 @@ class RepositoryIngestionService:
                         embedding=embedding.embedding,
                     )
                 )
+            logger.info(
+                "upload-batch database flush starting filename=%s group_start=%d",
+                file_metadata.filename,
+                start,
+            )
             await session.flush()
+            logger.info(
+                "upload-batch database flush completed filename=%s group_start=%d",
+                file_metadata.filename,
+                start,
+            )
             embeddings_created += len(embeddings)
             del embeddings, source_group
         return embeddings_created
@@ -285,7 +335,9 @@ class RepositoryIngestionService:
             return project
         project = Project(name=project_name or f"repository-{uuid4().hex[:12]}")
         session.add(project)
+        logger.info("upload-batch database project flush starting")
         await session.flush()
+        logger.info("upload-batch database project flush completed")
         return project
 
     def _validate_total_upload_size(self, uploads: list[UploadFile]) -> None:
