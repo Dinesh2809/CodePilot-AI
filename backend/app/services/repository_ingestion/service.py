@@ -53,14 +53,7 @@ class RepositoryIngestionService:
         session: AsyncSession | None = None,
         project_name: str | None = None,
     ) -> RepositoryIngestionResponse:
-        response, source_chunks = await self._collect(uploads)
-        if session is not None and response.success:
-            await self._persist(
-                session,
-                response,
-                source_chunks,
-                project_name=project_name,
-            )
+        response, _, _ = await self._run(uploads, session, project_name)
         return response
 
     async def ingest(
@@ -75,12 +68,8 @@ class RepositoryIngestionService:
                 "INVALID_PROJECT_NAME", "A project name is required.", 422
             )
 
-        response, source_chunks = await self._collect(uploads)
-        project_id, embeddings_created = await self._persist(
-            session,
-            response,
-            source_chunks,
-            project_name=project_name.strip(),
+        response, project_id, embeddings_created = await self._run(
+            uploads, session, project_name.strip()
         )
         return ProjectIngestionResult(
             project_id=project_id,
@@ -92,9 +81,12 @@ class RepositoryIngestionService:
             errors=response.errors,
         )
 
-    async def _collect(
-        self, uploads: list[UploadFile] | None
-    ) -> tuple[RepositoryIngestionResponse, list[CodeChunk]]:
+    async def _run(
+        self,
+        uploads: list[UploadFile] | None,
+        session: AsyncSession | None,
+        project_name: str | None,
+    ) -> tuple[RepositoryIngestionResponse, UUID | None, int]:
         if not uploads:
             raise RepositoryIngestionException(
                 "EMPTY_BATCH", "At least one file is required.", 400
@@ -106,40 +98,36 @@ class RepositoryIngestionService:
                 413,
             )
 
-        total_upload_size_bytes = 0
+        self._validate_total_upload_size(uploads)
         files: list[RepositoryFile] = []
         chunks: list[RepositoryChunk] = []
-        source_chunks: list[CodeChunk] = []
         errors: list[RepositoryFileError] = []
         language_counts: dict[str, int] = {}
         total_lines = 0
         total_size_bytes = 0
         successful_files = 0
+        embeddings_created = 0
+        project: Project | None = None
 
-        for upload in uploads:
-            filename = upload.filename or "[missing]"
-            total_upload_size_bytes += self._upload_size(upload)
-            if total_upload_size_bytes > self.max_total_upload_size_bytes:
-                raise RepositoryIngestionException(
-                    "BATCH_TOO_LARGE",
-                    "The uploaded files exceed the maximum total request size.",
-                    413,
-                )
-            try:
-                metadata, source = await self.upload_service.read_source(
-                    upload, preserve_filename=True
-                )
-            except CodeUploadException as error:
-                errors.append(self._error(filename, error))
-                continue
+        try:
+            for upload in uploads:
+                filename = upload.filename or "[missing]"
+                try:
+                    metadata, source = await self.upload_service.read_source(
+                        upload, preserve_filename=True
+                    )
+                except CodeUploadException as error:
+                    errors.append(self._error(filename, error))
+                    continue
 
-            total_lines += metadata.line_count
-            total_size_bytes += metadata.size_bytes
-            language_counts[metadata.language] = language_counts.get(metadata.language, 0) + 1
+                total_lines += metadata.line_count
+                total_size_bytes += metadata.size_bytes
+                language_counts[metadata.language] = language_counts.get(
+                    metadata.language, 0
+                ) + 1
 
-            if metadata.extension != ".py":
-                files.append(
-                    RepositoryFile(
+                if metadata.extension != ".py":
+                    file_metadata = RepositoryFile(
                         filename=metadata.filename,
                         language=metadata.language,
                         extension=metadata.extension,
@@ -148,38 +136,42 @@ class RepositoryIngestionService:
                         parser_status="not_implemented",
                         chunker_status="not_implemented",
                     )
-                )
-                successful_files += 1
-                continue
+                    files.append(file_metadata)
+                    successful_files += 1
+                    if session is not None:
+                        project = await self._ensure_project(session, project, project_name)
+                        await self._persist_file(session, project, file_metadata, [])
+                    del source
+                    continue
 
-            try:
-                result = self.python_chunker.chunk(source, metadata.filename)
-            except ValueError as error:
-                files.append(
-                    RepositoryFile(
-                        filename=metadata.filename,
-                        language=metadata.language,
-                        extension=metadata.extension,
-                        size_bytes=metadata.size_bytes,
-                        line_count=metadata.line_count,
-                        parser_status="error",
-                        chunker_status="not_run",
+                try:
+                    result = self.python_chunker.chunk(source, metadata.filename)
+                except ValueError as error:
+                    files.append(
+                        RepositoryFile(
+                            filename=metadata.filename,
+                            language=metadata.language,
+                            extension=metadata.extension,
+                            size_bytes=metadata.size_bytes,
+                            line_count=metadata.line_count,
+                            parser_status="error",
+                            chunker_status="not_run",
+                        )
                     )
-                )
-                errors.append(
-                    RepositoryFileError(
-                        filename=metadata.filename,
-                        code="SYNTAX_ERROR",
-                        message=str(error),
+                    errors.append(
+                        RepositoryFileError(
+                            filename=metadata.filename,
+                            code="SYNTAX_ERROR",
+                            message=str(error),
+                        )
                     )
-                )
-                continue
+                    del source
+                    continue
 
-            source_chunks.extend(result.chunks)
-            file_chunks = [self._repository_chunk(chunk) for chunk in result.chunks]
-            chunks.extend(file_chunks)
-            files.append(
-                RepositoryFile(
+                file_chunks = [self._repository_chunk(chunk) for chunk in result.chunks]
+                del source
+                chunks.extend(file_chunks)
+                file_metadata = RepositoryFile(
                     filename=metadata.filename,
                     language=metadata.language,
                     extension=metadata.extension,
@@ -189,36 +181,47 @@ class RepositoryIngestionService:
                     parser_status="completed",
                     chunker_status="completed",
                 )
-            )
-            successful_files += 1
+                files.append(file_metadata)
+                successful_files += 1
+                if session is not None:
+                    project = await self._ensure_project(session, project, project_name)
+                    embeddings_created += await self._persist_file(
+                        session, project, file_metadata, result.chunks
+                    )
+                del result, file_chunks
 
-        statistics = RepositoryStatistics(
-            total_files=len(uploads),
-            successful_files=successful_files,
-            failed_files=len(errors),
-            total_lines=total_lines,
-            total_size_bytes=total_size_bytes,
-            total_chunks=len(chunks),
-            languages=language_counts,
-        )
-        return RepositoryIngestionResponse(
+            if session is not None and project is not None:
+                await session.commit()
+        except Exception:
+            if session is not None:
+                await session.rollback()
+            raise
+
+        response = RepositoryIngestionResponse(
             success=successful_files > 0,
-            repository=RepositorySummary(
-                file_count=len(files), chunk_count=len(chunks)
-            ),
+            repository=RepositorySummary(file_count=len(files), chunk_count=len(chunks)),
             files=files,
             chunks=chunks,
-            statistics=statistics,
+            statistics=RepositoryStatistics(
+                total_files=len(uploads),
+                successful_files=successful_files,
+                failed_files=len(errors),
+                total_lines=total_lines,
+                total_size_bytes=total_size_bytes,
+                total_chunks=len(chunks),
+                languages=language_counts,
+            ),
             errors=errors,
-        ), source_chunks
+        )
+        return response, project.id if project is not None else None, embeddings_created
 
-    async def _persist(
+    async def _persist_file(
         self,
         session: AsyncSession,
-        response: RepositoryIngestionResponse,
+        project: Project,
+        file_metadata: RepositoryFile,
         source_chunks: list[CodeChunk],
-        project_name: str | None = None,
-    ) -> tuple[UUID, int]:
+    ) -> int:
         if self.embedding_service is None:
             raise RepositoryIngestionException(
                 "EMBEDDING_NOT_CONFIGURED",
@@ -226,84 +229,73 @@ class RepositoryIngestionService:
                 503,
             )
 
-        resolved_project_name = project_name or f"repository-{uuid4().hex[:12]}"
-        project = Project(name=resolved_project_name)
+        code_file = CodeFile(
+            project_id=project.id,
+            filename=file_metadata.filename,
+            language=file_metadata.language or "unknown",
+            extension=file_metadata.extension or "",
+            size_bytes=file_metadata.size_bytes,
+            line_count=file_metadata.line_count,
+        )
+        session.add(code_file)
+        await session.flush()
+        embeddings_created = 0
+        for start in range(0, len(source_chunks), self.embedding_group_size):
+            source_group = source_chunks[start : start + self.embedding_group_size]
+            try:
+                embeddings = self.embedding_service.embed_chunks(source_group)
+            except EmbeddingServiceException as error:
+                raise RepositoryIngestionException(error.code, error.message, 503) from error
+            if any(
+                embedding.dimension != EXPECTED_EMBEDDING_DIMENSION
+                or len(embedding.embedding) != EXPECTED_EMBEDDING_DIMENSION
+                for embedding in embeddings
+            ):
+                raise RepositoryIngestionException(
+                    "INVALID_EMBEDDING_DIMENSION",
+                    "Chunk embeddings must have exactly 384 dimensions.",
+                    422,
+                )
+            for source_chunk, embedding in zip(source_group, embeddings, strict=True):
+                session.add(
+                    CodeChunkRecord(
+                        file_id=code_file.id,
+                        chunk_id=source_chunk.chunk_id,
+                        chunk_type=source_chunk.chunk_type,
+                        name=source_chunk.name,
+                        start_line=source_chunk.start_line,
+                        end_line=source_chunk.end_line,
+                        content=source_chunk.content,
+                        language=source_chunk.language,
+                        embedding=embedding.embedding,
+                    )
+                )
+            await session.flush()
+            embeddings_created += len(embeddings)
+            del embeddings, source_group
+        return embeddings_created
+
+    async def _ensure_project(
+        self,
+        session: AsyncSession,
+        project: Project | None,
+        project_name: str | None,
+    ) -> Project:
+        if project is not None:
+            return project
+        project = Project(name=project_name or f"repository-{uuid4().hex[:12]}")
         session.add(project)
         await session.flush()
+        return project
 
-        try:
-            file_ids_by_filename: dict[str, list[UUID]] = {}
-            for file_metadata in response.files:
-                code_file = CodeFile(
-                    project_id=project.id,
-                    filename=file_metadata.filename,
-                    language=file_metadata.language or "unknown",
-                    extension=file_metadata.extension or "",
-                    size_bytes=file_metadata.size_bytes,
-                    line_count=file_metadata.line_count,
-                )
-                session.add(code_file)
-                await session.flush()
-                file_ids_by_filename.setdefault(file_metadata.filename, []).append(
-                    code_file.id
-                )
-
-            chunk_offset = 0
-            while source_chunks:
-                source_group = source_chunks[: self.embedding_group_size]
-                del source_chunks[: len(source_group)]
-                response_group = response.chunks[
-                    chunk_offset : chunk_offset + len(source_group)
-                ]
-                chunk_offset += len(source_group)
-
-                try:
-                    embeddings = self.embedding_service.embed_chunks(source_group)
-                except EmbeddingServiceException as error:
-                    raise RepositoryIngestionException(
-                        error.code, error.message, 503
-                    ) from error
-                if any(
-                    embedding.dimension != EXPECTED_EMBEDDING_DIMENSION
-                    or len(embedding.embedding) != EXPECTED_EMBEDDING_DIMENSION
-                    for embedding in embeddings
-                ):
-                    raise RepositoryIngestionException(
-                        "INVALID_EMBEDDING_DIMENSION",
-                        "Chunk embeddings must have exactly 384 dimensions.",
-                        422,
-                    )
-
-                for source_chunk, chunk, embedding in zip(
-                    source_group, response_group, embeddings, strict=True
-                ):
-                    for file_id in file_ids_by_filename[chunk.filename]:
-                        session.add(
-                            CodeChunkRecord(
-                                file_id=file_id,
-                                chunk_id=chunk.chunk_id,
-                                chunk_type=chunk.chunk_type,
-                                name=chunk.name,
-                                start_line=chunk.start_line,
-                                end_line=chunk.end_line,
-                                content=source_chunk.content,
-                                language=chunk.language,
-                                embedding=embedding.embedding,
-                            )
-                        )
-                await session.flush()
-                del embeddings, source_group, response_group
-
-            await session.commit()
-            return project.id, chunk_offset
-        except RepositoryIngestionException:
-            await session.rollback()
-            raise
-        except Exception as error:
-            await session.rollback()
+    def _validate_total_upload_size(self, uploads: list[UploadFile]) -> None:
+        total_size = sum(self._upload_size(upload) for upload in uploads)
+        if total_size > self.max_total_upload_size_bytes:
             raise RepositoryIngestionException(
-                "PERSISTENCE_FAILED", "Unable to persist ingested code.", 503
-            ) from error
+                "BATCH_TOO_LARGE",
+                "The uploaded files exceed the maximum total request size.",
+                413,
+            )
 
     @staticmethod
     def _upload_size(upload: UploadFile) -> int:

@@ -17,9 +17,11 @@ from backend.app.services.repository_ingestion import (
 class FakeEmbeddingService:
     def __init__(self) -> None:
         self.calls: list[int] = []
+        self.chunk_ids: list[str] = []
 
     def embed_chunks(self, chunks):
         self.calls.append(len(chunks))
+        self.chunk_ids.extend(chunk.chunk_id for chunk in chunks)
         return [
             InMemoryEmbedding(chunk.chunk_id, 384, [0.0] * 384)
             for chunk in chunks
@@ -80,6 +82,10 @@ def test_ingest_embeds_and_flushes_bounded_groups() -> None:
 
     assert result.embeddings_created == 2
     assert embedding_service.calls == [1, 1]
+    assert embedding_service.chunk_ids == [
+        "first.py:variables:variables",
+        "second.py:variables:variables",
+    ]
     assert session.flush_count == 5
     assert session.committed is True
 
