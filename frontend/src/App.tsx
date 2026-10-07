@@ -2,13 +2,16 @@ import { useState } from "react";
 import {
   Activity,
   ArrowUpRight,
+  Bell,
   BrainCircuit,
+  ChevronDown,
   ChevronRight,
   CircleHelp,
   Code2,
   FileCode2,
   FolderGit2,
   LayoutDashboard,
+  Plus,
   Search,
   Settings2,
   ShieldCheck,
@@ -21,7 +24,7 @@ import { SearchPanel } from "./components/SearchPanel";
 import { QaPanel } from "./components/QaPanel";
 import type { RepositoryIngestionResponse, ReviewResponse } from "./types/repository";
 
-type View = "overview" | "repository" | "search" | "qa" | "review";
+type View = "home" | "projects" | "repository" | "search" | "qa" | "review";
 
 type NavItem = {
   id: View;
@@ -31,11 +34,20 @@ type NavItem = {
 };
 
 const navigation: NavItem[] = [
-  { id: "overview", label: "Overview", hint: "Workspace pulse", icon: LayoutDashboard },
-  { id: "repository", label: "Repository", hint: "Upload and index", icon: FolderGit2 },
-  { id: "search", label: "Code search", hint: "Find by meaning", icon: Search },
-  { id: "qa", label: "Ask CodePilot", hint: "Grounded answers", icon: BrainCircuit },
-  { id: "review", label: "Code review", hint: "Quality signals", icon: ShieldCheck },
+  { id: "home", label: "Home", hint: "Workspace dashboard", icon: LayoutDashboard },
+  { id: "projects", label: "Projects", hint: "Repositories", icon: FolderGit2 },
+  { id: "search", label: "Code Search", hint: "Find by meaning", icon: Search },
+  { id: "qa", label: "Ask Code", hint: "Grounded answers", icon: BrainCircuit },
+  { id: "review", label: "Reviews", hint: "Quality signals", icon: ShieldCheck },
+];
+
+const capabilityItems = [
+  { title: "Security analysis", detail: "Flag unsafe patterns and risky dependencies", icon: ShieldCheck },
+  { title: "Code quality", detail: "Surface maintainability and consistency issues", icon: Activity },
+  { title: "Performance analysis", detail: "Spot hot paths and inefficiencies", icon: Sparkles },
+  { title: "Code understanding", detail: "Map architecture and ownership quickly", icon: Code2 },
+  { title: "Semantic code search", detail: "Find the right context by intent", icon: Search },
+  { title: "RAG-powered answers", detail: "Ground answers in the indexed repository", icon: BrainCircuit },
 ];
 
 const signals = [
@@ -45,7 +57,7 @@ const signals = [
 ];
 
 function App() {
-  const [activeView, setActiveView] = useState<View>("overview");
+  const [activeView, setActiveView] = useState<View>("home");
   const [repositoryResult, setRepositoryResult] = useState<RepositoryIngestionResponse | null>(null);
   const [reviewResult, setReviewResult] = useState<ReviewResponse | null>(null);
   const activeItem = navigation.find((item) => item.id === activeView) ?? navigation[0];
@@ -55,12 +67,16 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-lockup">
-          <div className="brand-mark"><Code2 size={19} strokeWidth={2.4} /></div>
+          <div className="brand-mark"><Code2 size={18} strokeWidth={2.4} /></div>
           <div>
             <strong>CodePilot</strong>
             <span>AI workbench</span>
           </div>
         </div>
+
+        <button className="new-review-button" type="button" onClick={() => setActiveView("repository")}>
+          <Plus size={16} /> New Review
+        </button>
 
         <div className="workspace-switcher" aria-label="Current workspace">
           <div className="workspace-avatar">CP</div>
@@ -68,7 +84,7 @@ function App() {
             <strong>Personal workspace</strong>
             <span>Local project</span>
           </div>
-          <ChevronRight size={15} />
+          <ChevronDown size={15} />
         </div>
 
         <nav className="primary-nav" aria-label="Primary navigation">
@@ -99,10 +115,23 @@ function App() {
 
       <main className="main-content">
         <header className="topbar">
-          <div className="breadcrumb"><span>Workspace</span><ChevronRight size={14} /><strong>{activeItem.label}</strong></div>
+          <div className="breadcrumb">
+            <span>Workspace</span>
+            <ChevronRight size={14} />
+            <strong>{activeItem.label}</strong>
+          </div>
+
           <div className="topbar-actions">
-            <span className="environment-pill"><span className="status-dot" />Development</span>
-            <button className="icon-button" aria-label="Open help" title="Open help" type="button"><CircleHelp size={18} /></button>
+            <div className="project-pill">
+              <span className="status-dot" />
+              {repositoryResult ? "Repository ready" : "No project selected"}
+            </div>
+            <button className="search-pill" type="button">
+              <Search size={14} /> Search workspace
+            </button>
+            <button className="icon-button" aria-label="Notifications" title="Notifications" type="button">
+              <Bell size={17} />
+            </button>
             <div className="profile-chip"><span>AS</span><strong>AS</strong></div>
           </div>
         </header>
@@ -111,16 +140,18 @@ function App() {
           <section className="page-heading">
             <div>
               <div className="eyebrow"><ActiveIcon size={14} /> {activeItem.hint}</div>
-              <h1>{activeView === "overview" ? "Good code starts with context." : activeItem.label}</h1>
+              <h1>{activeView === "home" ? "Understand your codebase.\nReview it with AI." : activeItem.label}</h1>
               <p>{getPageDescription(activeView)}</p>
             </div>
             <button className="secondary-button" type="button" onClick={() => setActiveView("repository")}>
-              <UploadCloud size={16} /> Add repository
+              <UploadCloud size={16} /> New project
             </button>
           </section>
 
-          {activeView === "overview" ? (
-            <Overview onNavigate={setActiveView} repositoryResult={repositoryResult} />
+          {activeView === "home" ? (
+            <HomePage onNavigate={setActiveView} repositoryResult={repositoryResult} />
+          ) : activeView === "projects" ? (
+            <ProjectsPage onNavigate={setActiveView} repositoryResult={repositoryResult} />
           ) : activeView === "repository" ? (
             <RepositoryUpload onComplete={setRepositoryResult} />
           ) : activeView === "review" ? (
@@ -138,7 +169,7 @@ function App() {
   );
 }
 
-function Overview({
+function HomePage({
   onNavigate,
   repositoryResult,
 }: {
@@ -147,62 +178,203 @@ function Overview({
 }) {
   const indexedFiles = repositoryResult?.statistics.successful_files ?? 0;
   const indexedChunks = repositoryResult?.repository.chunk_count ?? 0;
+
   return (
-    <>
+    <div className="home-page">
+      <section className="hero-panel">
+        <div className="hero-copy">
+          <div className="eyebrow"><Sparkles size={14} /> Developer workspace</div>
+          <h1>Understand your codebase.<br />Review it with AI.</h1>
+          <p>
+            CodePilot adds structure, semantics, and review context to your repository so you can move
+            from code understanding to code quality without losing engineering flow.
+          </p>
+
+          <div className="hero-actions">
+            <button className="primary-button" type="button" onClick={() => onNavigate("repository")}>
+              <UploadCloud size={17} /> New Code Review
+            </button>
+            <button className="secondary-button" type="button" onClick={() => onNavigate("projects")}>
+              Explore Projects
+            </button>
+          </div>
+        </div>
+
+        <div className="hero-metrics">
+          <div className="metric-box">
+            <span>Indexed files</span>
+            <strong>{indexedFiles}</strong>
+            <small>{indexedFiles > 0 ? "Ready for analysis" : "Waiting for upload"}</small>
+          </div>
+          <div className="metric-box">
+            <span>Searchable chunks</span>
+            <strong>{indexedChunks}</strong>
+            <small>{indexedChunks > 0 ? "Semantic index live" : "No indexed data yet"}</small>
+          </div>
+        </div>
+      </section>
+
       <section className="signal-grid" aria-label="Workspace signals">
         {signals.map((signal) => (
           <article className={`signal-card ${signal.tone}`} key={signal.label}>
-            <div className="signal-card-top"><span>{signal.label}</span><ArrowUpRight size={16} /></div>
-            <strong>{signal.label === "Indexed files" && indexedFiles > 0 ? indexedFiles : signal.label === "Searchable chunks" && indexedChunks > 0 ? indexedChunks : signal.value}</strong>
-            <small>{signal.label === "Indexed files" && indexedFiles > 0 ? "Ready for exploration" : signal.label === "Searchable chunks" && indexedChunks > 0 ? "Semantic index is ready" : signal.detail}</small>
+            <div className="signal-card-top">
+              <span>{signal.label}</span>
+              <ArrowUpRight size={16} />
+            </div>
+            <strong>
+              {signal.label === "Indexed files" && indexedFiles > 0
+                ? indexedFiles
+                : signal.label === "Searchable chunks" && indexedChunks > 0
+                  ? indexedChunks
+                  : signal.value}
+            </strong>
+            <small>
+              {signal.label === "Indexed files" && indexedFiles > 0
+                ? "Ready for exploration"
+                : signal.label === "Searchable chunks" && indexedChunks > 0
+                  ? "Semantic index is ready"
+                  : signal.detail}
+            </small>
           </article>
         ))}
       </section>
 
-      <section className="dashboard-grid">
-        <article className="welcome-panel">
-          <div className="panel-kicker"><Sparkles size={16} /> Your analysis desk</div>
-          <h2>Bring a codebase into focus.</h2>
-          <p>Upload a few files or a repository, then move from structure to meaning with semantic search, grounded Q&A, and focused review.</p>
-          <button className="primary-button" type="button" onClick={() => onNavigate("repository")}><UploadCloud size={17} /> Upload files</button>
-          <div className="panel-stamp"><Activity size={15} /> Analysis pipeline ready</div>
-        </article>
-
-        <article className="activity-panel">
-          <div className="section-heading"><div><span className="section-label">Recent activity</span><h2>Nothing here yet</h2></div><Activity size={19} /></div>
-          <div className="empty-activity"><div className="empty-icon"><FileCode2 size={21} /></div><p>Upload your first repository to see processing activity here.</p><button type="button" onClick={() => onNavigate("repository")}>Get started <ArrowUpRight size={14} /></button></div>
-        </article>
+      <section className="capability-grid" aria-label="Product capabilities">
+        {capabilityItems.map(({ title, detail, icon: Icon }) => (
+          <article className="capability-card" key={title}>
+            <div className="capability-icon"><Icon size={16} /></div>
+            <strong>{title}</strong>
+            <p>{detail}</p>
+          </article>
+        ))}
       </section>
-
-      <section className="workflow-strip">
-        <div><span className="section-label">A quiet path from code to clarity</span><h2>One workspace, four useful moves.</h2></div>
-        <div className="workflow-steps">
-          <WorkflowStep number="01" title="Index" detail="Parse and embed" />
-          <WorkflowStep number="02" title="Explore" detail="Search by intent" />
-          <WorkflowStep number="03" title="Ask" detail="Stay grounded" />
-          <WorkflowStep number="04" title="Review" detail="Find what matters" />
-        </div>
-      </section>
-    </>
+    </div>
   );
 }
 
-function WorkflowStep({ number, title, detail }: { number: string; title: string; detail: string }) {
-  return <div className="workflow-step"><span>{number}</span><strong>{title}</strong><small>{detail}</small></div>;
+function ProjectsPage({
+  onNavigate,
+  repositoryResult,
+}: {
+  onNavigate: (view: View) => void;
+  repositoryResult: RepositoryIngestionResponse | null;
+}) {
+  const projectRows = repositoryResult
+    ? [
+        {
+          name: "Current repository",
+          language: "Python",
+          files: repositoryResult.statistics.successful_files,
+          chunks: repositoryResult.repository.chunk_count,
+          lastAnalyzed: repositoryResult.success ? "Just now" : "Waiting",
+          status: repositoryResult.success ? "Indexed" : "Processing",
+        },
+      ]
+    : [];
+
+  return (
+    <section className="projects-page">
+      <div className="section-header">
+        <div>
+          <span className="section-label">Projects</span>
+          <h2>Repository workspace</h2>
+        </div>
+        <button className="primary-button" type="button" onClick={() => onNavigate("repository")}>
+          <Plus size={15} /> New Project
+        </button>
+      </div>
+
+      {projectRows.length === 0 ? (
+        <div className="empty-projects">
+          <div className="empty-projects-icon"><FolderGit2 size={24} /></div>
+          <h3>No projects yet</h3>
+          <p>Upload a repository to start understanding your codebase.</p>
+          <button className="primary-button" type="button" onClick={() => onNavigate("repository")}>
+            Create Project
+          </button>
+        </div>
+      ) : (
+        <div className="project-table-wrap">
+          <table className="project-table">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Files</th>
+                <th>Chunks</th>
+                <th>Last analyzed</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projectRows.map((project) => (
+                <tr key={project.name} onClick={() => onNavigate("search")}>
+                  <td>
+                    <div className="project-info">
+                      <div className="project-badge">PY</div>
+                      <div>
+                        <strong>{project.name}</strong>
+                        <span>{project.language}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td>{project.files}</td>
+                  <td>{project.chunks}</td>
+                  <td>{project.lastAnalyzed}</td>
+                  <td>
+                    <span className={`status-pill ${project.status === "Indexed" ? "success" : "muted"}`}>
+                      {project.status}
+                    </span>
+                  </td>
+                  <td>
+                    <button className="table-action" type="button">
+                      Open
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
 }
 
 function EmptyWorkspace({ view, onNavigate }: { view: View; onNavigate: (view: View) => void }) {
   const isRepository = view === "repository";
-  return <section className="empty-workspace"><div className="empty-workspace-icon">{isRepository ? <UploadCloud size={25} /> : <Sparkles size={25} />}</div><h2>{isRepository ? "Your repository has a blank canvas." : "This view is ready for your code."}</h2><p>{isRepository ? "The upload flow will turn Python files into a searchable, reviewable workspace." : "Upload and index a repository first, then this workspace will fill with useful context."}</p><button className="primary-button" type="button" onClick={() => onNavigate(isRepository ? "overview" : "repository")}>{isRepository ? "Back to overview" : "Upload a repository"} <ArrowUpRight size={16} /></button></section>;
+  return (
+    <section className="empty-workspace">
+      <div className="empty-workspace-icon">{isRepository ? <UploadCloud size={25} /> : <Sparkles size={25} />}</div>
+      <h2>{isRepository ? "Your repository has a blank canvas." : "This view is ready for your code."}</h2>
+      <p>
+        {isRepository
+          ? "The upload flow will turn Python files into a searchable, reviewable workspace."
+          : "Upload and index a repository first, then this workspace will fill with useful context."}
+      </p>
+      <button className="primary-button" type="button" onClick={() => onNavigate(isRepository ? "home" : "repository")}>
+        {isRepository ? "Back to overview" : "Upload a repository"} <ArrowUpRight size={16} />
+      </button>
+    </section>
+  );
 }
 
 function getPageDescription(view: View) {
   switch (view) {
-    case "repository": return "Bring files into a project and prepare them for analysis.";
-    case "search": return "Find the exact context you need without guessing filenames.";
-    case "qa": return "Ask questions and keep every answer grounded in your indexed code.";
-    case "review": return "See security, quality, and performance signals in one place.";
-    default: return "A focused space for indexing, exploring, and reviewing your codebase.";
+    case "home":
+      return "A focused space for indexing, exploring, and reviewing your codebase.";
+    case "projects":
+      return "Manage repositories, review activity, and keep your engineering context organized.";
+    case "repository":
+      return "Bring files into a project and prepare them for analysis.";
+    case "search":
+      return "Find the exact context you need without guessing filenames.";
+    case "qa":
+      return "Ask questions and keep every answer grounded in your indexed code.";
+    case "review":
+      return "See security, quality, and performance signals in one place.";
+    default:
+      return "A focused space for indexing, exploring, and reviewing your codebase.";
   }
 }
 

@@ -115,10 +115,18 @@ export function RepositoryUpload({ onComplete }: RepositoryUploadProps) {
       <div className="upload-intro">
         <div>
           <span className="section-label">Repository intake</span>
-          <h2 id="upload-title">Upload Python files to analyze</h2>
-          <p>Start with up to 50 files. CodePilot will parse, chunk, embed, and index them for the next steps.</p>
+          <h2 id="upload-title">New Code Review</h2>
+          <p>
+            Upload your repository and let CodePilot analyze its structure, security, quality, and
+            performance.
+          </p>
         </div>
         <div className="upload-constraint"><FileCode2 size={16} /><span>Python · 5 MB per file</span></div>
+      </div>
+
+      <div className="upload-summary-bar">
+        <span>{selectedFiles.length} file{selectedFiles.length === 1 ? "" : "s"}</span>
+        <span>{formatFileSize(selectedFiles.reduce((total, item) => total + item.file.size, 0))}</span>
       </div>
 
       <div
@@ -134,16 +142,25 @@ export function RepositoryUpload({ onComplete }: RepositoryUploadProps) {
       >
         <input ref={inputRef} type="file" accept=".py,text/x-python" multiple onChange={handleInput} hidden />
         <div className="drop-icon"><UploadCloud size={24} /></div>
-        <strong>Drop Python files here</strong>
-        <span>or browse from your computer</span>
-        <small>Duplicate filenames are skipped · {MAX_FILES} files maximum</small>
+        <strong>Drag repository/files here</strong>
+        <span>Browse files from your computer</span>
+        <small>Python files only · Duplicate filenames are skipped · {MAX_FILES} files maximum</small>
       </div>
 
       {message && <div className="upload-alert" role="alert"><AlertTriangle size={17} /><span>{message}</span><button type="button" aria-label="Dismiss message" onClick={() => setMessage(null)}><X size={15} /></button></div>}
 
       {selectedFiles.length > 0 && (
         <div className="selected-files">
-          <div className="selected-header"><div><span className="section-label">Selected files</span><strong>{selectedFiles.length} {selectedFiles.length === 1 ? "file" : "files"}</strong></div><button className="text-button" type="button" onClick={() => { setSelectedFiles([]); setStatus("idle"); setResult(null); }}>Clear all</button></div>
+          <div className="selected-header">
+            <div>
+              <span className="section-label">Selected files</span>
+              <strong>{selectedFiles.length} {selectedFiles.length === 1 ? "file" : "files"}</strong>
+            </div>
+            <div className="selection-summary">
+              <span>{formatFileSize(selectedFiles.reduce((total, item) => total + item.file.size, 0))}</span>
+              <button className="text-button" type="button" onClick={() => { setSelectedFiles([]); setStatus("idle"); setResult(null); }}>Clear all</button>
+            </div>
+          </div>
           <div className="file-list">
             {selectedFiles.map(({ id, file }) => <div className="selected-file" key={id}><div className="file-icon"><FileCode2 size={17} /></div><div className="file-details"><strong>{file.name}</strong><span>{formatFileSize(file.size)}</span></div><button className="remove-file" type="button" aria-label={`Remove ${file.name}`} title={`Remove ${file.name}`} onClick={() => removeFile(id)}><Trash2 size={16} /></button></div>)}
           </div>
